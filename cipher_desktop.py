@@ -31,8 +31,8 @@ from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
 from PyQt6.QtCore import QUrl, Qt, QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QIcon, QColor, QPalette
 
-SERVER_URL = "http://localhost:3133"
-SERVER_PORT = 3133
+SERVER_URL = "http://localhost:3200"
+SERVER_PORT = 3200
 
 
 # ── signals bridge (thread → Qt) ────────────────────────────

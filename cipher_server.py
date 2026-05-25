@@ -28,6 +28,12 @@ try:
 except ImportError:
     pass
 
+# Import agent framework
+from cipher_agents import BowTieOrchestrator, AgentTask
+
+# Global orchestrator instance
+orchestrator = BowTieOrchestrator()
+
 try:
     import edge_tts
     TTS_AVAILABLE = True
@@ -752,6 +758,89 @@ async def add_memory(req: MemoryRequest):
     success = await store_memory(req.content, req.category, req.source)
     return {"success": success, "content": req.content[:100]}
 
+
+# ═══════════════════════════════════════════════════════════════
+# AGENT API ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/agents/status")
+async def agents_status():
+    """Get status of all agents."""
+    return {
+        "orchestrator": "ACTIVE",
+        "agents": orchestrator.get_status(),
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+
+
+@app.post("/agents/route")
+async def agents_route(payload: dict):
+    """
+    Route a message to appropriate agents.
+    Returns the tasks that would be created (dry run).
+    """
+    message = payload.get("message", "")
+    tasks = await orchestrator.route(message)
+    return {
+        "message": message,
+        "tasks": [{"agent": t.agent, "action": t.action, "priority": t.priority} for t in tasks],
+        "task_count": len(tasks)
+    }
+
+
+@app.post("/agents/execute")
+async def agents_execute(payload: dict):
+    """
+    Route a message to agents and execute the tasks.
+    Returns the results.
+    """
+    message = payload.get("message", "")
+    tasks = await orchestrator.route(message)
+    if not tasks:
+        return {"message": message, "results": "No tasks created.", "task_count": 0}
+
+    results = await orchestrator.execute_tasks(tasks, SUPABASE_URL, SUPABASE_KEY, OLLAMA_URL)
+    synthesis = orchestrator.synthesize(results)
+
+    return {
+        "message": message,
+        "task_count": len(results),
+        "results": [
+            {
+                "agent": r.agent,
+                "action": r.action,
+                "status": r.status,
+                "result": r.result[:500] if r.result else None,
+                "error": r.error
+            }
+            for r in results
+        ],
+        "synthesis": synthesis
+    }
+
+
+@app.post("/agents/task")
+async def agents_task(payload: dict):
+    """
+    Create and execute a single agent task directly.
+    """
+    agent_name = payload.get("agent", "")
+    action = payload.get("action", "")
+    params = payload.get("params", {})
+    priority = payload.get("priority", "MEDIUM")
+
+    task = AgentTask(agent=agent_name, action=action, params=params, priority=priority)
+    results = await orchestrator.execute_tasks([task], SUPABASE_URL, SUPABASE_KEY, OLLAMA_URL)
+    return {
+        "task": {
+            "agent": results[0].agent,
+            "action": results[0].action,
+            "status": results[0].status,
+            "result": results[0].result,
+            "error": results[0].error
+        }
+    }
+
 @app.get("/brief")
 async def get_brief():
     """Generate a quick status brief from live data."""
@@ -1114,7 +1203,7 @@ async def ai_threat_scan():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", "3133"))
+    port = int(os.getenv("PORT", "3200"))
     print("⬡ CIPHER SOVEREIGN SERVER — INITIALIZING")
     print(f"   Port: {port} | Ollama: {OLLAMA_URL} | Supabase: {SUPABASE_URL}")
     print(f"   Constitution: ACTIVE | Self-Repair: ACTIVE | Voice: ACTIVE")
